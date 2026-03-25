@@ -269,9 +269,10 @@ podman build -t openclaw:local -f "$REPO_PATH/Dockerfile" "${BUILD_ARGS[@]}" "$R
 echo "Saving image to $IMAGE_TAR ..."
 podman save -o "$IMAGE_TAR" openclaw:local
 
-# The image is loaded as the openclaw user, so grant read/traverse access.
-chmod 755 "$IMAGE_TAR_DIR"
-chmod 644 "$IMAGE_TAR"
+# The image is loaded as the openclaw user; grant group-only read/traverse access.
+chown "root:$OPENCLAW_UID" "$IMAGE_TAR_DIR" "$IMAGE_TAR"
+chmod 750 "$IMAGE_TAR_DIR"
+chmod 640 "$IMAGE_TAR"
 
 echo "Loading image into $OPENCLAW_USER Podman store..."
 run_as_openclaw podman load -i "$IMAGE_TAR"

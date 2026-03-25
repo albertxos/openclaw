@@ -210,7 +210,7 @@ if [[ "$RUN_SETUP" == true ]]; then
     -e HOME=/home/node -e TERM=xterm-256color -e BROWSER=echo \
     -e NPM_CONFIG_CACHE=/home/node/.openclaw/.npm \
     -e NPM_CONFIG_PREFIX=/home/node/.openclaw/.npm-global \
-    -e PATH=/home/node/.openclaw/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl \
+    -e PATH=/home/node/.openclaw/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     -e OPENCLAW_GATEWAY_TOKEN="$OPENCLAW_GATEWAY_TOKEN" \
     -v "$CONFIG_DIR:/home/node/.openclaw:rw${SELINUX_MOUNT_OPTS}" \
     -v "$WORKSPACE_DIR:/home/node/.openclaw/workspace:rw${SELINUX_MOUNT_OPTS}" \
@@ -226,7 +226,7 @@ podman run --pull="$PODMAN_PULL" -d --replace \
   -e HOME=/home/node -e TERM=xterm-256color \
   -e NPM_CONFIG_CACHE=/home/node/.openclaw/.npm \
   -e NPM_CONFIG_PREFIX=/home/node/.openclaw/.npm-global \
-  -e PATH=/home/node/.openclaw/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl \
+  -e PATH=/home/node/.openclaw/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
   -e OPENCLAW_GATEWAY_TOKEN="$OPENCLAW_GATEWAY_TOKEN" \
   "${ENV_FILE_ARGS[@]}" \
   -v "$CONFIG_DIR:/home/node/.openclaw:rw${SELINUX_MOUNT_OPTS}" \
