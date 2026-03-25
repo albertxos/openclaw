@@ -285,9 +285,38 @@ if [[ ! -f "$OPENCLAW_CONFIG/.env" ]]; then
   echo "Generated OPENCLAW_GATEWAY_TOKEN and wrote it to $OPENCLAW_CONFIG/.env"
 fi
 
+INSTALLER_SHELL="$(basename "${SHELL:-sh}")"
+if [[ ! "$INSTALLER_SHELL" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+  INSTALLER_SHELL="sh"
+fi
+
+CONTAINER_SHELL="$INSTALLER_SHELL"
+if ! run_as_openclaw podman run --rm --pull=never openclaw:local sh -lc "command -v '$CONTAINER_SHELL' >/dev/null 2>&1"; then
+  for candidate in zsh bash sh; do
+    if run_as_openclaw podman run --rm --pull=never openclaw:local sh -lc "command -v '$candidate' >/dev/null 2>&1"; then
+      CONTAINER_SHELL="$candidate"
+      break
+    fi
+  done
+fi
+
+if run_as_openclaw sh -lc "grep -q '^OPENCLAW_CONTAINER_SHELL=' '$OPENCLAW_CONFIG/.env'"; then
+  run_as_openclaw sh -lc "sed -i 's/^OPENCLAW_CONTAINER_SHELL=.*/OPENCLAW_CONTAINER_SHELL=$CONTAINER_SHELL/' '$OPENCLAW_CONFIG/.env'"
+else
+  run_as_openclaw sh -lc "printf '%s\n' 'OPENCLAW_CONTAINER_SHELL=$CONTAINER_SHELL' >> '$OPENCLAW_CONFIG/.env'"
+fi
+echo "Set OPENCLAW_CONTAINER_SHELL=$CONTAINER_SHELL in $OPENCLAW_CONFIG/.env"
+
 if [[ ! -f "$OPENCLAW_CONFIG/openclaw.json" ]]; then
   run_as_openclaw sh -lc "umask 077 && cat > '$OPENCLAW_CONFIG/openclaw.json' <<'JSON'
-{ \"gateway\": { \"mode\": \"local\" } }
+{
+  \"gateway\": {
+    \"mode\": \"local\",
+    \"controlUi\": {
+      \"allowedOrigins\": [\"http://127.0.0.1:18789\", \"http://localhost:18789\"]
+    }
+  }
+}
 JSON"
   echo "Wrote minimal config to $OPENCLAW_CONFIG/openclaw.json"
 fi
@@ -302,9 +331,11 @@ if [[ "$INSTALL_QUADLET" == true ]]; then
     run_as_openclaw sh -lc "cat > '$QUADLET_DST'"
   run_as_openclaw chmod 0644 "$QUADLET_DST"
 
-  echo "Reloading and enabling user service..."
+  echo "Reloading and starting user service..."
   run_root systemctl --machine "${OPENCLAW_USER}@" --user daemon-reload
-  run_root systemctl --machine "${OPENCLAW_USER}@" --user enable --now openclaw.service
+  # Quadlet-generated units cannot be enabled (they are auto-activated by the generator).
+  # daemon-reload picks up the .container file; start brings it up immediately.
+  run_root systemctl --machine "${OPENCLAW_USER}@" --user start openclaw.service
   echo "Quadlet installed and service started."
 else
   echo "Container + launch script installed."

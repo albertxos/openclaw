@@ -140,7 +140,7 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
       DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends; \
     fi && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      procps hostname curl git lsof openssl
+      procps hostname curl git lsof openssl zsh
 
 RUN chown node:node /app
 
@@ -236,6 +236,29 @@ RUN ln -sf /app/openclaw.mjs /usr/local/bin/openclaw \
  && chmod 755 /app/openclaw.mjs
 
 ENV NODE_ENV=production
+
+# Configure zsh for interactive container shells and preload OpenClaw completion.
+RUN install -d -m 0755 /home/node && \
+    cat > /home/node/.zshrc <<'ZSHRC' && \
+    chown node:node /home/node/.zshrc && \
+    chmod 0644 /home/node/.zshrc
+export LANG=${LANG:-C.UTF-8}
+export TERM=${TERM:-xterm-256color}
+
+autoload -U compinit
+compinit -i
+
+setopt auto_cd
+setopt interactive_comments
+setopt hist_ignore_dups
+setopt share_history
+
+if command -v openclaw >/dev/null 2>&1; then
+  source <(openclaw completion --shell zsh)
+fi
+
+PROMPT='%F{cyan}%n@%m%f %F{yellow}%~%f %# '
+ZSHRC
 
 # Security hardening: Run as non-root user
 # The node:24-bookworm image includes a 'node' user (uid 1000)
