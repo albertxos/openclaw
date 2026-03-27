@@ -269,6 +269,13 @@ podman build -t openclaw:local -f "$REPO_PATH/Dockerfile" "${BUILD_ARGS[@]}" "$R
 echo "Saving image to $IMAGE_TAR ..."
 podman save -o "$IMAGE_TAR" openclaw:local
 
+# Grant the openclaw user (via group membership) read access to the image tar,
+# without making it world-readable. run_root handles the sudo escalation when
+# setup is invoked by a non-root caller.
+run_root chown "root:$OPENCLAW_UID" "$IMAGE_TAR_DIR" "$IMAGE_TAR"
+run_root chmod 750 "$IMAGE_TAR_DIR"
+run_root chmod 640 "$IMAGE_TAR"
+
 echo "Loading image into $OPENCLAW_USER Podman store..."
 run_as_openclaw podman load -i "$IMAGE_TAR"
 
@@ -281,9 +288,40 @@ if [[ ! -f "$OPENCLAW_CONFIG/.env" ]]; then
   echo "Generated OPENCLAW_GATEWAY_TOKEN and wrote it to $OPENCLAW_CONFIG/.env"
 fi
 
+# Detect a usable interactive shell for the container and persist it.
+INSTALLER_SHELL="$(basename "${SHELL:-sh}")"
+# Allow only safe characters for a shell executable name (alphanumeric, underscore, dash).
+if [[ ! "$INSTALLER_SHELL" =~ ^[A-Za-z0-9_-]+$ ]]; then
+  INSTALLER_SHELL="sh"
+fi
+CONTAINER_SHELL="$INSTALLER_SHELL"
+if ! run_as_openclaw podman run --rm --pull=never openclaw:local sh -lc "command -v '$CONTAINER_SHELL' >/dev/null 2>&1"; then
+  for candidate in zsh bash sh; do
+    if run_as_openclaw podman run --rm --pull=never openclaw:local sh -lc "command -v '$candidate' >/dev/null 2>&1"; then
+      CONTAINER_SHELL="$candidate"
+      break
+    fi
+  done
+fi
+# $CONTAINER_SHELL is either a regex-validated installer shell name or one of the
+# hardcoded safe candidates above; no special sed/shell characters are possible.
+if run_as_openclaw sh -lc "grep -q '^OPENCLAW_CONTAINER_SHELL=' '$OPENCLAW_CONFIG/.env'"; then
+  run_as_openclaw sh -lc "sed -i 's|^OPENCLAW_CONTAINER_SHELL=.*|OPENCLAW_CONTAINER_SHELL=$CONTAINER_SHELL|' '$OPENCLAW_CONFIG/.env'"
+else
+  run_as_openclaw sh -lc "printf '%s\n' 'OPENCLAW_CONTAINER_SHELL=$CONTAINER_SHELL' >> '$OPENCLAW_CONFIG/.env'"
+fi
+echo "Set OPENCLAW_CONTAINER_SHELL=$CONTAINER_SHELL in $OPENCLAW_CONFIG/.env"
+
 if [[ ! -f "$OPENCLAW_CONFIG/openclaw.json" ]]; then
   run_as_openclaw sh -lc "umask 077 && cat > '$OPENCLAW_CONFIG/openclaw.json' <<'JSON'
-{ \"gateway\": { \"mode\": \"local\" } }
+{
+  \"gateway\": {
+    \"mode\": \"local\",
+    \"controlUi\": {
+      \"allowedOrigins\": [\"http://127.0.0.1:18789\", \"http://localhost:18789\"]
+    }
+  }
+}
 JSON"
   echo "Wrote minimal config to $OPENCLAW_CONFIG/openclaw.json"
 fi
