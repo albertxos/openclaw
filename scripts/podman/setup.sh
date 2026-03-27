@@ -16,6 +16,8 @@
 set -euo pipefail
 
 OPENCLAW_USER="${OPENCLAW_PODMAN_USER:-openclaw}"
+OPENCLAW_IMAGE="${OPENCLAW_PODMAN_IMAGE:-${OPENCLAW_IMAGE:-openclaw:local}}"
+OPENCLAW_CONTAINER_NAME="${OPENCLAW_PODMAN_CONTAINER:-openclaw}"
 REPO_PATH="${OPENCLAW_REPO_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 RUN_SCRIPT_SRC="$REPO_PATH/scripts/run-openclaw-podman.sh"
 QUADLET_TEMPLATE="$REPO_PATH/scripts/podman/openclaw.container.in"
@@ -210,6 +212,7 @@ fi
 OPENCLAW_HOME="$(resolve_user_home "$OPENCLAW_USER")"
 OPENCLAW_UID="$(id -u "$OPENCLAW_USER" 2>/dev/null || true)"
 OPENCLAW_CONFIG="$OPENCLAW_HOME/.openclaw"
+OPENCLAW_WORKSPACE_DIR="$OPENCLAW_CONFIG/workspace"
 LAUNCH_SCRIPT_DST="$OPENCLAW_HOME/run-openclaw-podman.sh"
 
 # Prefer systemd user services (Quadlet) for production. Enable lingering early so rootless Podman can run
@@ -272,7 +275,8 @@ podman save -o "$IMAGE_TAR" openclaw:local
 # Grant the openclaw user (via group membership) read access to the image tar,
 # without making it world-readable. run_root handles the sudo escalation when
 # setup is invoked by a non-root caller.
-run_root chown "root:$OPENCLAW_UID" "$IMAGE_TAR_DIR" "$IMAGE_TAR"
+OPENCLAW_GID="$(id -g "$OPENCLAW_USER" 2>/dev/null || echo "$OPENCLAW_UID")"
+run_root chown "root:$OPENCLAW_GID" "$IMAGE_TAR_DIR" "$IMAGE_TAR"
 run_root chmod 750 "$IMAGE_TAR_DIR"
 run_root chmod 640 "$IMAGE_TAR"
 
@@ -295,9 +299,12 @@ if [[ ! "$INSTALLER_SHELL" =~ ^[A-Za-z0-9_-]+$ ]]; then
   INSTALLER_SHELL="sh"
 fi
 CONTAINER_SHELL="$INSTALLER_SHELL"
-if ! run_as_openclaw podman run --rm --pull=never openclaw:local sh -lc "command -v '$CONTAINER_SHELL' >/dev/null 2>&1"; then
+# Use env to pass the shell name so it's never interpolated inside a quoted command string.
+if ! run_as_openclaw podman run --rm --pull=never "$OPENCLAW_IMAGE" \
+    env PROBE_SHELL="$CONTAINER_SHELL" sh -lc 'command -v "$PROBE_SHELL" >/dev/null 2>&1'; then
   for candidate in zsh bash sh; do
-    if run_as_openclaw podman run --rm --pull=never openclaw:local sh -lc "command -v '$candidate' >/dev/null 2>&1"; then
+    if run_as_openclaw podman run --rm --pull=never "$OPENCLAW_IMAGE" \
+        env PROBE_SHELL="$candidate" sh -lc 'command -v "$PROBE_SHELL" >/dev/null 2>&1'; then
       CONTAINER_SHELL="$candidate"
       break
     fi
@@ -331,8 +338,16 @@ if [[ "$INSTALL_QUADLET" == true ]]; then
   QUADLET_DST="$QUADLET_DIR/openclaw.container"
   echo "Installing Quadlet to $QUADLET_DST ..."
   run_as_openclaw mkdir -p "$QUADLET_DIR"
-  OPENCLAW_HOME_ESCAPED="$(escape_sed_replacement_pipe_delim "$OPENCLAW_HOME")"
-  sed "s|{{OPENCLAW_HOME}}|$OPENCLAW_HOME_ESCAPED|g" "$QUADLET_TEMPLATE" | \
+  OPENCLAW_CONFIG_ESCAPED="$(escape_sed_replacement_pipe_delim "$OPENCLAW_CONFIG")"
+  OPENCLAW_WORKSPACE_ESCAPED="$(escape_sed_replacement_pipe_delim "$OPENCLAW_WORKSPACE_DIR")"
+  OPENCLAW_IMAGE_ESCAPED="$(escape_sed_replacement_pipe_delim "$OPENCLAW_IMAGE")"
+  OPENCLAW_CONTAINER_ESCAPED="$(escape_sed_replacement_pipe_delim "$OPENCLAW_CONTAINER_NAME")"
+  sed \
+    -e "s|{{OPENCLAW_CONFIG_DIR}}|$OPENCLAW_CONFIG_ESCAPED|g" \
+    -e "s|{{OPENCLAW_WORKSPACE_DIR}}|$OPENCLAW_WORKSPACE_ESCAPED|g" \
+    -e "s|{{IMAGE_NAME}}|$OPENCLAW_IMAGE_ESCAPED|g" \
+    -e "s|{{CONTAINER_NAME}}|$OPENCLAW_CONTAINER_ESCAPED|g" \
+    "$QUADLET_TEMPLATE" | \
     run_as_openclaw sh -lc "cat > '$QUADLET_DST'"
   run_as_openclaw chmod 0644 "$QUADLET_DST"
 
