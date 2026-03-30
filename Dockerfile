@@ -237,8 +237,12 @@ RUN ln -sf /app/openclaw.mjs /usr/local/bin/openclaw \
 
 ENV NODE_ENV=production
 
-# Configure zsh for interactive container shells and preload OpenClaw completion.
+# Configure zsh for interactive container shells.
+# Completion is pre-generated at build time to avoid startup latency.
 RUN install -d -m 0755 /home/node && \
+    mkdir -p /etc/zsh && \
+    openclaw completion --shell zsh > /etc/zsh/openclaw-completion.zsh 2>/dev/null || \
+      printf '# openclaw completion not available at build time\n' > /etc/zsh/openclaw-completion.zsh && \
     cat > /home/node/.zshrc <<'ZSHRC' && \
     chown node:node /home/node/.zshrc && \
     chmod 0644 /home/node/.zshrc
@@ -253,9 +257,7 @@ setopt interactive_comments
 setopt hist_ignore_dups
 setopt share_history
 
-if command -v openclaw >/dev/null 2>&1; then
-  source <(openclaw completion --shell zsh)
-fi
+[[ -r /etc/zsh/openclaw-completion.zsh ]] && source /etc/zsh/openclaw-completion.zsh
 
 PROMPT='%F{cyan}%n@%m%f %F{yellow}%~%f %# '
 ZSHRC
