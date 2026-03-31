@@ -111,7 +111,7 @@ upsert_env_var() {
   local key="$2"
   local value="$3"
   local tmp
-  tmp="$(mktemp)"
+  tmp="$(mktemp "$(dirname "$file")/.env.tmp.XXXXXX")"
   if [[ -f "$file" ]]; then
     awk -v k="$key" -v v="$value" '
       BEGIN { found = 0 }
@@ -157,7 +157,7 @@ fi
 # Keep this minimal; users can run the wizard later to configure channels/providers.
 CONFIG_JSON="$CONFIG_DIR/openclaw.json"
 if [[ ! -f "$CONFIG_JSON" ]]; then
-  echo '{ gateway: { mode: "local" } }' >"$CONFIG_JSON"
+  echo '{ "gateway": { "mode": "local" } }' >"$CONFIG_JSON"
   chmod 600 "$CONFIG_JSON" 2>/dev/null || true
   echo "Created $CONFIG_JSON (minimal gateway.mode=local)." >&2
 fi
@@ -231,8 +231,8 @@ podman run --pull="$PODMAN_PULL" -d --replace \
   "${ENV_FILE_ARGS[@]}" \
   -v "$CONFIG_DIR:/home/node/.openclaw:rw${SELINUX_MOUNT_OPTS}" \
   -v "$WORKSPACE_DIR:/home/node/.openclaw/workspace:rw${SELINUX_MOUNT_OPTS}" \
-  -p "${HOST_GATEWAY_PORT}:18789" \
-  -p "${HOST_BRIDGE_PORT}:18790" \
+  -p "127.0.0.1:${HOST_GATEWAY_PORT}:18789" \
+  -p "127.0.0.1:${HOST_BRIDGE_PORT}:18790" \
   "$OPENCLAW_IMAGE" \
   node dist/index.js gateway --bind "$GATEWAY_BIND" --port 18789
 
